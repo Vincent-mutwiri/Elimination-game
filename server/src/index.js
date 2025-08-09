@@ -91,6 +91,21 @@ app.get('/api/games/:code', async (req, res) => {
   }
 });
 
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const topPlayers = await Game.aggregate([
+      { $unwind: '$players' },
+      { $match: { 'players.isAlive': false, 'winner': { $exists: true } } },
+      { $group: { _id: '$players.name', wins: { $sum: 1 } } },
+      { $sort: { wins: -1 } },
+      { $limit: 10 }
+    ]);
+    res.json(topPlayers);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
 // Socket.IO Handlers
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
@@ -157,6 +172,22 @@ io.on('connection', (socket) => {
       console.error('Error in player:answer:', e);
       cb?.({ ok: false, error: e.message });
     }
+  });
+
+  socket.on('player:usePowerUp', async ({ code, powerUpName }, cb) => {
+    try {
+      const result = await gm.usePowerUp(code, socket.id, powerUpName);
+      cb?.({ ok: true, ...result });
+    } catch (e) {
+      cb?.({ ok: false, error: e.message });
+    }
+  });
+
+  socket.on('player:sendEmote', ({ code, emote }) => {
+    io.to(code).emit('game:emote', {
+      playerId: socket.id,
+      emote: emote,
+    });
   });
 
   socket.on('disconnect', () => {

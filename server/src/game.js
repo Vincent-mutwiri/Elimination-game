@@ -11,6 +11,8 @@ const SEED_QUESTIONS = [
   { id: 'q1', kind: 'mcq', body: 'What color was the first traffic light?', options: ['Red/Green', 'Red/Yellow', 'Green/Yellow', 'Blue/Red'], correctIndex: 0, timeMs: 12000 },
   { id: 'q2', kind: 'mcq', body: '2 + 2 * 3 = ?', options: ['8', '10', '6', '12'], correctIndex: 2, timeMs: 10000 },
   { id: 'q3', kind: 'mcq', body: 'Capital of Kenya?', options: ['Kisumu', 'Nairobi', 'Mombasa', 'Nakuru'], correctIndex: 1, timeMs: 10000 },
+  { id: 'q4', kind: 'estimate', body: 'How many days are in a year?', correctValue: 365, timeMs: 15000 },
+  { id: 'q5', kind: 'estimate', body: 'What is the population of Tokyo (in millions)?', correctValue: 14, timeMs: 15000 },
 ];
 
 export function createGameManager(io) {
@@ -42,7 +44,9 @@ export function createGameManager(io) {
         players: (gameObj.players || []).map(p => ({
           id: p.id || nanoid(8),
           name: p.name || 'Player',
-          isAlive: p.isAlive !== false, // default to true if not specified
+          isAlive: p.isAlive !== false,
+          score: p.score || 0,
+          powerUps: p.powerUps || [],
           joinedAt: p.joinedAt || Date.now()
         })),
         pot: gameObj.pot || 0,
@@ -64,7 +68,14 @@ export function createGameManager(io) {
 
   function sanitizeQuestion(q) {
     if (!q) return null;
-    return { id: q.id, body: q.body, options: q.options, kind: q.kind, timeMs: q.timeMs };
+    return { 
+      id: q.id, 
+      body: q.body, 
+      options: q.options, 
+      kind: q.kind, 
+      timeMs: q.timeMs,
+      correctValue: q.correctValue 
+    };
   }
 
   async function createGame({ 
@@ -219,7 +230,12 @@ export function createGameManager(io) {
       id: nanoid(8), 
       name, 
       socketId, 
-      isAlive: true, 
+      isAlive: true,
+      score: 0,
+      powerUps: [
+        { name: '50-50', used: false },
+        { name: 'Skip', used: false }
+      ],
       joinedAt: Date.now(), 
       answers: {}
     };
@@ -335,17 +351,28 @@ export function createGameManager(io) {
     const isLate = receivedAt > r.deadlineAt + g.config.graceMs;
 
     let isCorrect = false;
+    let score = 0;
     if (!isLate) {
       if (r.question.kind === 'mcq') {
         isCorrect = (payload?.choiceIndex === r.question.correctIndex);
+        if (isCorrect) {
+          const timeTaken = receivedAt - r.startedAt;
+          score = Math.max(0, r.question.timeMs - timeTaken);
+        }
       }
     }
     
-    // Use a Map for the answers to preserve the structure
     if (!g.currentRound.answers) {
-        g.currentRound.answers = new Map();
+        g.currentRound.answers = {};
     }
-    g.currentRound.answers.set(p.id, { isCorrect, receivedAt, isLate, choiceIndex: payload?.choiceIndex });
+    g.currentRound.answers[p.id] = { 
+      isCorrect, 
+      receivedAt, 
+      isLate, 
+      choiceIndex: payload?.choiceIndex,
+      value: payload?.value,
+      score 
+    };
     
     await g.save();
     return { accepted: true };
@@ -355,28 +382,43 @@ export function createGameManager(io) {
     const g = await Game.findOne({ code });
     if (!g || !g.currentRound) return;
     const r = g.currentRound;
+    const question = r.question;
 
     const alivePlayers = g.players.filter(p => p.isAlive);
-    const answerMap = r.answers || new Map();
+    const answerMap = r.answers || {};
+    const eliminated = [];
+    let survivors = new Set();
 
-    const correct = new Set();
-    const wrongOrLate = new Set();
+    if (question.kind === 'estimate') {
+      let closestPlayer = null;
+      let minDiff = Infinity;
 
-    for (const p of alivePlayers) {
-      const a = answerMap.get(p.id);
-      if (!a || a.isLate || !a.isCorrect) {
-        wrongOrLate.add(p.id);
-      } else if (a.isCorrect) {
-        correct.add(p.id);
+      for (const p of alivePlayers) {
+        const answer = answerMap[p.id];
+        if (answer && !answer.isLate && answer.value !== undefined) {
+          const diff = Math.abs(answer.value - question.correctValue);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestPlayer = p.id;
+          }
+        }
+      }
+
+      if (closestPlayer) {
+        survivors.add(closestPlayer);
+        const winner = g.players.find(p => p.id === closestPlayer);
+        if (winner) winner.score += 1000;
+      }
+    } else {
+      for (const p of alivePlayers) {
+        const a = answerMap[p.id];
+        if (a && !a.isLate && a.isCorrect) {
+          survivors.add(p.id);
+          p.score += a.score;
+        }
       }
     }
 
-    let survivors = new Set(correct); // Default to 'sudden'
-    
-    // Apply elimination logic based on cutMode
-    // ... (cutMode logic remains the same, operating on the 'correct' set)
-
-    const eliminated = [];
     g.players.forEach(p => {
       if (p.isAlive && !survivors.has(p.id)) {
         p.isAlive = false;
@@ -403,7 +445,7 @@ export function createGameManager(io) {
     io.to(code).emit('round:result', {
       index: r.index,
       eliminated,
-      survivors: stillAlive.map(p => ({ id: p.id, name: p.name })),
+      survivors: stillAlive.map(p => ({ id: p.id, name: p.name, score: p.score })),
       winner: finalGameState.winner,
       pot: g.pot
     });
@@ -424,6 +466,28 @@ export function createGameManager(io) {
     io.to(code).emit('game:state', publicGame(g));
   }
 
+  async function usePowerUp(code, socketId, powerUpName) {
+    const g = await Game.findOne({ code });
+    if (!g) throw new Error('Game not found');
+    
+    const p = g.players.find(pl => pl.socketId === socketId);
+    if (!p || !p.isAlive) throw new Error('Player not alive or not found');
+    
+    const powerUp = p.powerUps.find(pu => pu.name === powerUpName && !pu.used);
+    if (!powerUp) throw new Error('Power-up not available');
+    
+    powerUp.used = true;
+    await g.save();
+    
+    io.to(code).emit('game:powerUpUsed', {
+      playerId: p.id,
+      playerName: p.name,
+      powerUpName
+    });
+    
+    return { success: true };
+  }
+
   function handleDisconnect(socketId) {
     // For now, we don't mark players as disconnected to allow reconnection.
     // A future implementation could involve a "reconnect" feature.
@@ -435,6 +499,7 @@ export function createGameManager(io) {
     startRound,
     nextRound,
     recordAnswer,
+    usePowerUp,
     publicGame,
     endGame,
     attachSocketToGame,

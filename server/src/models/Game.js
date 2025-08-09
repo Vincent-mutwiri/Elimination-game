@@ -1,11 +1,18 @@
 import mongoose from 'mongoose';
 import { nanoid } from 'nanoid';
 
+const PowerUpSchema = new mongoose.Schema({
+  name: { type: String, enum: ['50-50', 'Skip'] },
+  used: { type: Boolean, default: false }
+}, { _id: false });
+
 const PlayerSchema = new mongoose.Schema({
   id: { type: String, default: () => nanoid(8), required: true },
   socketId: { type: String, required: true },
   name: { type: String, required: true },
   isAlive: { type: Boolean, default: true },
+  score: { type: Number, default: 0 },
+  powerUps: [PowerUpSchema],
   joinedAt: { type: Date, default: Date.now },
   answers: { type: mongoose.Schema.Types.Mixed, default: {} },
   eliminatedAt: { type: Date },
@@ -13,7 +20,15 @@ const PlayerSchema = new mongoose.Schema({
 
 const RoundSchema = new mongoose.Schema({
     index: Number,
-    question: mongoose.Schema.Types.Mixed,
+    question: {
+      id: String,
+      kind: { type: String, enum: ['mcq', 'estimate'] },
+      body: String,
+      options: [mongoose.Schema.Types.Mixed],
+      correctIndex: Number,
+      correctValue: Number,
+      timeMs: Number,
+    },
     startedAt: Date,
     deadlineAt: Date,
     answers: { type: mongoose.Schema.Types.Mixed, default: {} },

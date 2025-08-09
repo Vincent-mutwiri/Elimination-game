@@ -11,6 +11,8 @@ export default function Player() {
   const [locked, setLocked] = useState(false)
   const [eliminated, setEliminated] = useState(false)
   const [playerId, setPlayerId] = useState(null)
+  const [emotes, setEmotes] = useState([])
+  const [player, setPlayer] = useState(null)
 
   useEffect(() => {
     socket.on('game:state', payload => {
@@ -36,6 +38,10 @@ export default function Player() {
         const alive = payload.survivors.map(s => s.id)
         if (!alive.includes(playerId)) setEliminated(true)
       }
+    })
+    socket.on('game:emote', payload => {
+      setEmotes(prev => [...prev.slice(-4), payload])
+      setTimeout(() => setEmotes(prev => prev.slice(1)), 3000)
     })
     return () => {
       socket.off('game:state')
@@ -73,6 +79,7 @@ export default function Player() {
       
       setJoined(true)
       setPlayerId(res.player.id)
+      setPlayer(res.player)
       setGame(res.game || {})
       console.log('Successfully joined game as player:', res.player.id)
     })
@@ -81,13 +88,26 @@ export default function Player() {
   const submitAnswer = () => {
     if (!round || choice == null || locked) return
     setLocked(true)
+    const payload = round.question.kind === 'estimate' 
+      ? { value: parseInt(choice) || 0 }
+      : { choiceIndex: choice }
     socket.emit('player:answer', {
       code,
       roundIndex: round.index,
-      payload: { choiceIndex: choice }
+      payload
     }, (res) => {
       // lock regardless; server decides correctness
     })
+  }
+
+  const usePowerUp = (powerUpName) => {
+    socket.emit('player:usePowerUp', { code, powerUpName }, (res) => {
+      if (!res.ok) alert(res.error)
+    })
+  }
+
+  const sendEmote = (emote) => {
+    socket.emit('player:sendEmote', { code, emote })
   }
 
   if (!joined) {
@@ -111,21 +131,59 @@ export default function Player() {
       <p><strong>Game:</strong> {code}</p>
       <p><strong>Status:</strong> {game?.status}</p>
       <p><strong>Alive:</strong> {eliminated ? 'No (spectating)' : 'Yes'}</p>
+      <p><strong>Score:</strong> {player?.score || 0}</p>
+      
+      {!eliminated && player?.powerUps && (
+        <div className="power-ups">
+          <h4>Power-ups:</h4>
+          {player.powerUps.map((pu, i) => (
+            <button key={i} disabled={pu.used} onClick={() => usePowerUp(pu.name)}>
+              {pu.name} {pu.used ? '(Used)' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+      
+      <div className="emotes">
+        <button onClick={() => sendEmote('😂')}>😂</button>
+        <button onClick={() => sendEmote('👍')}>👍</button>
+        <button onClick={() => sendEmote('🤔')}>🤔</button>
+        <button onClick={() => sendEmote('😱')}>😱</button>
+      </div>
+      
+      {emotes.length > 0 && (
+        <div className="emote-display">
+          {emotes.map((e, i) => <span key={i}>{e.emote}</span>)}
+        </div>
+      )}
+      
       <hr />
       {round ? (
         <div>
           <h3>Round {round.index + 1}</h3>
           <p className="question">{round.question.body}</p>
-          <ul className="options">
-            {round.question.options.map((opt, i) => (
-              <li key={i}>
-                <label>
-                  <input type="radio" disabled={locked || eliminated} checked={choice===i} onChange={() => setChoice(i)} />
-                  {opt}
-                </label>
-              </li>
-            ))}
-          </ul>
+          {round.question.kind === 'estimate' ? (
+            <div>
+              <input 
+                type="number" 
+                disabled={locked || eliminated} 
+                value={choice || ''} 
+                onChange={(e) => setChoice(e.target.value)}
+                placeholder="Enter your estimate"
+              />
+            </div>
+          ) : (
+            <ul className="options">
+              {round.question.options.map((opt, i) => (
+                <li key={i}>
+                  <label>
+                    <input type="radio" disabled={locked || eliminated} checked={choice===i} onChange={() => setChoice(i)} />
+                    {opt}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
           {!eliminated && (
             <button className="btn" disabled={choice==null || locked} onClick={submitAnswer}>
               {locked ? 'Locked' : 'Lock Answer'}

@@ -10,6 +10,7 @@ export default function App() {
         <h1>Last Player Standing</h1>
         <nav>
           <Link to="/">Home</Link>
+          <Link to="/leaderboard">Leaderboard</Link>
           <Link to="/admin">Admin</Link>
           <a href="https://github.com/" target="_blank" rel="noreferrer">Docs</a>
         </nav>

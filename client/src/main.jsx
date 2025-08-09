@@ -7,6 +7,7 @@ import Host from './pages/Host.jsx'
 import Player from './pages/Player.jsx';
 import Admin from './pages/Admin.jsx';
 import GameDetails from './pages/GameDetails.jsx';
+import Leaderboard from './pages/Leaderboard.jsx';
 import './styles.css'
 
 createRoot(document.getElementById('root')).render(
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="play" element={<Player />} />
           <Route path="admin" element={<Admin />} />
           <Route path="admin/:code" element={<GameDetails />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
         </Route>
       </Routes>
     </BrowserRouter>
