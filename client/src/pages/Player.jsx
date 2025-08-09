@@ -46,11 +46,35 @@ export default function Player() {
 
   const join = (e) => {
     e.preventDefault()
-    socket.emit('player:join', { code, name }, (res) => {
-      if (!res?.ok) return alert(res.error || 'Join failed')
+    if (!code || !name) {
+      return alert('Please enter both game code and your name')
+    }
+    
+    console.log('Attempting to join game with code:', code)
+    
+    socket.emit('player:join', { 
+      code: code.trim().toUpperCase(), 
+      name: name.trim() 
+    }, (res) => {
+      console.log('Join response:', res)
+      
+      if (!res) {
+        return alert('No response from server. Please try again.')
+      }
+      
+      if (!res.ok) {
+        return alert(res.error || 'Failed to join game. Please check the code and try again.')
+      }
+      
+      if (!res.player || !res.player.id) {
+        console.error('Invalid player data in response:', res)
+        return alert('Invalid player data received from server. Please try again.')
+      }
+      
       setJoined(true)
       setPlayerId(res.player.id)
-      setGame(res.game)
+      setGame(res.game || {})
+      console.log('Successfully joined game as player:', res.player.id)
     })
   }
 

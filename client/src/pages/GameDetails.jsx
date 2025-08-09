@@ -1,3 +1,4 @@
+import { fetchApi } from '../lib/api';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -5,22 +6,23 @@ export default function GameDetails() {
   const { code } = useParams();
   const [game, setGame] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch(`/api/games/${code}`)
-      .then(res => res.json())
+    fetchApi(`/api/games/${code}`)
       .then(data => {
-        if (data.error) throw new Error(data.error);
         setGame(data);
-        setLoading(false);
       })
       .catch(err => {
-        console.error(`Failed to fetch game ${code}`, err);
+        setError(err.message);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, [code]);
 
   if (loading) return <div className="muted">Loading game details...</div>;
+  if (error) return <div className="card danger"><strong>Error:</strong> {error}</div>;
   if (!game) return <div className="card danger">Game not found.</div>;
 
   return (

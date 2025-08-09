@@ -30,7 +30,7 @@ const GameSchema = new mongoose.Schema({
   players: [PlayerSchema],
   hostSocketId: { type: String },
   roundIndex: { type: Number, default: -1 },
-  currentRound: { type: RoundSchema },
+  currentRound: RoundSchema,
   pot: { type: Number, default: 0 },
   questions: { type: [mongoose.Schema.Types.Mixed], default: [] },
   winner: { id: String, name: String },
