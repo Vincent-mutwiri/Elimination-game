@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: squid-game-backend
+    env: node
+    buildCommand: pnpm install
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: mongodb
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: https://elimination-game-pi.vercel.app,https://elimination-game-pi.vercel.app/
