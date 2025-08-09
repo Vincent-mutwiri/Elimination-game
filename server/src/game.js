@@ -1,4 +1,4 @@
-"""import { nanoid } from 'nanoid';
+import { nanoid } from 'nanoid';
 import { Game } from './models/Game.js';
 
 // Helper: generate a 6-digit code (digits only)
@@ -16,26 +16,38 @@ const SEED_QUESTIONS = [
 export function createGameManager(io) {
 
   function publicGame(g) {
-    if (!g) return null;
-    // This function now expects a Mongoose document and converts it to a plain object
-    const gameObj = g.toObject ? g.toObject() : g;
-    return {
-      code: gameObj.code,
-      status: gameObj.status,
-      roundIndex: gameObj.roundIndex,
-      config: gameObj.config,
-      players: gameObj.players.map(p => ({
-        id: p.id, name: p.name, isAlive: p.isAlive, joinedAt: p.joinedAt
-      })),
-      pot: gameObj.pot,
-      currentRound: gameObj.currentRound ? {
-        index: gameObj.currentRound.index,
-        question: sanitizeQuestion(gameObj.currentRound.question),
-        deadlineAt: gameObj.currentRound.deadlineAt,
-        startedAt: gameObj.currentRound.startedAt,
-      } : null,
-      winner: gameObj.winner,
-    };
+    if (!g) {
+      console.error('publicGame called with null/undefined game');
+      return null;
+    }
+    
+    try {
+      // This function now expects a Mongoose document and converts it to a plain object
+      const gameObj = g.toObject ? g.toObject() : g;
+      
+      const result = {
+        code: gameObj.code,
+        status: gameObj.status,
+        roundIndex: gameObj.roundIndex,
+        config: gameObj.config,
+        players: (gameObj.players || []).map(p => ({
+          id: p.id, name: p.name, isAlive: p.isAlive, joinedAt: p.joinedAt
+        })),
+        pot: gameObj.pot || 0,
+        currentRound: gameObj.currentRound ? {
+          index: gameObj.currentRound.index,
+          question: sanitizeQuestion(gameObj.currentRound.question),
+          deadlineAt: gameObj.currentRound.deadlineAt,
+          startedAt: gameObj.currentRound.startedAt,
+        } : null,
+        winner: gameObj.winner || null,
+      };
+      
+      return result;
+    } catch (error) {
+      console.error('Error in publicGame:', error);
+      return null;
+    }
   }
 
   function sanitizeQuestion(q) {
@@ -44,32 +56,94 @@ export function createGameManager(io) {
   }
 
   async function createGame({ cutMode = 'sudden', cutParam = 0.2 } = {}) {
-    const code = code6();
-    const game = new Game({
-      code,
-      config: { cutMode, cutParam, graceMs: 300 },
-      questions: [...SEED_QUESTIONS],
-    });
-    await game.save();
-    io.to(code).emit('game:state', publicGame(game));
-    return publicGame(game);
+    try {
+      const code = code6();
+      console.log(`Creating new game with code: ${code}`);
+      
+      const game = new Game({
+        code,
+        status: 'lobby',
+        config: { cutMode, cutParam, graceMs: 300 },
+        questions: [...SEED_QUESTIONS],
+        players: [],
+        roundIndex: -1,
+        pot: 0
+      });
+      
+      const savedGame = await game.save();
+      console.log(`Game ${code} created successfully`);
+      
+      // Create the public game state
+      const gameState = publicGame(savedGame);
+      console.log('Game state created:', gameState);
+      
+      // Emit the game state to the room
+      io.to(code).emit('game:state', gameState);
+      
+      return gameState;
+    } catch (error) {
+      console.error('Error creating game:', error);
+      throw new Error('Failed to create game');
+    }
   }
 
   async function attachSocketToGame(socket, code, { isHost }) {
-    const game = await Game.findOne({ code });
-    if (!game) return;
-    if (isHost) {
+    try {
+      console.log(`Attaching socket ${socket.id} to game ${code}, isHost: ${isHost}`);
+      
+      const game = await Game.findOne({ code });
+      if (!game) {
+        const errorMsg = `Game not found with code: ${code}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // Join the socket to the game room
+      socket.join(code);
+      
+      if (isHost) {
+        console.log(`Setting host socket ID for game ${code} to ${socket.id}`);
         game.hostSocketId = socket.id;
         await game.save();
+      }
+
+      // Send the current game state to the socket
+      const gameState = publicGame(game);
+      if (!gameState) {
+        throw new Error('Failed to generate game state');
+      }
+      
+      console.log(`Sending game state to socket ${socket.id}:`, gameState);
+      socket.emit('game:state', gameState);
+      
+      // Handle game state requests
+      socket.on('game:getState', async ({ code: askCode }, cb) => {
+        try {
+          console.log(`Game state requested for code: ${askCode}`);
+          if (askCode !== code) {
+            console.warn(`Socket ${socket.id} requested wrong room: ${askCode} (expected ${code})`);
+            return cb?.({ ok: false, error: 'Wrong room' });
+          }
+          
+          const freshGame = await Game.findOne({ code: askCode });
+          if (!freshGame) {
+            console.error(`Game not found for code: ${askCode}`);
+            return cb?.({ ok: false, error: 'Game not found' });
+          }
+          
+          cb?.({ ok: true, game: publicGame(freshGame) });
+        } catch (error) {
+          console.error('Error getting game state:', error);
+          cb?.({ ok: false, error: 'Failed to get game state' });
+        }
+      });
+      
+      return gameState;
+    } catch (error) {
+      console.error('Error in attachSocketToGame:', error);
+      socket.emit('error', { message: error.message || 'Failed to attach to game' });
+      throw error;
     }
-
-    socket.emit('game:state', publicGame(game));
-
-    socket.on('game:getState', async ({ code: askCode }, cb) => {
-      if (askCode !== code) return cb?.({ ok: false, error: 'Wrong room' });
-      const freshGame = await Game.findOne({ code: askCode });
-      cb?.({ ok: true, game: publicGame(freshGame) });
-    });
   }
 
   async function addPlayer(code, { name, socketId }) {
@@ -85,10 +159,24 @@ export function createGameManager(io) {
     return { id: player.id, name: player.name, isAlive: player.isAlive };
   }
 
-  async function startRound({ code, question }) {
+  async function startRound({ code, question }, socketId) {
     const g = await Game.findOne({ code });
-    if (!g) throw new Error('Game not found');
+    if (!g) {
+      console.error(`Game not found with code: ${code}`);
+      throw new Error('Game not found');
+    }
+    
+    // Verify the socket has permission to start the round (host only)
+    if (g.hostSocketId !== socketId) {
+      console.error(`Unauthorized attempt to start game ${code} by socket ${socketId}`);
+      throw new Error('Only the host can start the game');
+    }
+    
     if (!question) {
+      if (!g.questions || g.questions.length === 0) {
+        console.error(`No questions found for game ${code}`);
+        throw new Error('No questions available for this game');
+      }
       question = g.questions[(g.roundIndex + 1) % g.questions.length];
     }
     g.status = 'live';
@@ -237,4 +325,3 @@ export function createGameManager(io) {
     handleDisconnect,
   };
 }
-""
