@@ -1,0 +1,42 @@
+/* Minimal, clean styles for MVP */
+:root { --bg:#0b0e14; --card:#141821; --text:#e6e6e6; --muted:#a0a0a0; --accent:#6ee7b7; --accent2:#93c5fd; --danger:#fca5a5}
+
+* { box-sizing: border-box; }
+body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+.container { max-width: 980px; margin: 0 auto; padding: 24px; }
+header, footer { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+header h1 { font-size: 24px; margin:0; }
+nav a { color: var(--muted); margin-left: 12px; text-decoration: none; }
+main { margin-top: 16px; }
+
+.card { background: var(--card); border-radius: 14px; padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+h2, h3 { margin-top: 0; }
+hr { border:0; border-top:1px solid #222534; margin: 16px 0; }
+.muted { color: var(--muted); }
+
+.btn { background: var(--accent); color:#04151a; border:0; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 700; }
+.btn.secondary { background: var(--accent2); color:#0b1220; }
+.btn.small { padding: 6px 10px; font-size: 12px; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.actions { display:flex; gap: 10px; margin-top: 10px; }
+.grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0a0d13; padding: 2px 8px; border-radius: 6px; }
+
+.form { display:flex; flex-direction: column; gap: 10px; }
+.form input[type=text], .form input[type=number], .form textarea {
+  width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #1f2533; background:#0a0d13; color: var(--text);
+}
+.row { display:flex; gap: 8px; align-items:center; }
+.inline { display:flex; align-items:center; gap: 6px; color: var(--muted); }
+
+.list { list-style:none; margin:0; padding:0; }
+.list li { padding: 8px 10px; border-bottom: 1px solid #1f2533; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.pill.alive { background: #0f3; color:#021; }
+.pill.dead { background: var(--danger); color:#2c0000; }
+
+.question { font-size: 20px; margin-bottom: 10px; }
+.options { list-style:none; padding:0; margin: 0 0 12px 0; }
+.options li { margin-bottom: 6px; }
