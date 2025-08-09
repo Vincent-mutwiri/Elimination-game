@@ -1,7 +1,9 @@
 import { io } from 'socket.io-client';
 
 // Get server URL from environment or use default
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+const isDevelopment = import.meta.env.DEV;
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
+  (isDevelopment ? 'http://localhost:4000' : 'https://your-server-url.com');
 
 console.log(`Connecting to WebSocket server at: ${SERVER_URL}`);
 
