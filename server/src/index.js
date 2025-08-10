@@ -4,15 +4,15 @@ import http from 'http';
 import cors from 'cors';
 import { Server } from 'socket.io';
 import { Game } from './models/Game.js';
+import { Question } from './models/Question.js';
 import { createGameManager } from './game.js';
 import { connectDB } from './db.js';
 
 const PORT = process.env.PORT || 4000;
 
-// Simple CORS configuration that allows all origins in development
 const corsOptions = {
-  origin: '*', // Allow all origins in development
-  methods: ['GET', 'POST', 'OPTIONS'],
+  origin: '*', 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: '*',
   credentials: true,
   optionsSuccessStatus: 204
@@ -20,13 +20,11 @@ const corsOptions = {
 
 const app = express();
 
-// Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
 
 const server = http.createServer(app);
 
-// Configure Socket.IO with minimal CORS settings
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -34,25 +32,17 @@ const io = new Server(server, {
     allowedHeaders: '*',
     credentials: true
   },
-  // Connection settings
-  pingTimeout: 60000,       // 60 seconds without pong to consider connection dead
-  pingInterval: 25000,      // Send pings every 25 seconds
-  upgradeTimeout: 10000,    // Wait 10 seconds for the upgrade to complete
-  maxHttpBufferSize: 1e8,   // 100MB max message size
-  
-  // Transport settings - try WebSocket first, then fall back to polling
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 10000,
+  maxHttpBufferSize: 1e8,
   transports: ['websocket', 'polling'],
   allowUpgrades: true,
-  
-  // Security settings
   serveClient: false,
   cookie: false,
-  
-  // Disable per-message deflate to avoid compression issues
   perMessageDeflate: false
 });
 
-// Add connection state logging
 io.engine.on('connection_error', (err) => {
   console.error('Socket.IO connection error:', err);
 });
@@ -93,20 +83,83 @@ app.get('/api/games/:code', async (req, res) => {
 
 app.get('/api/leaderboard', async (req, res) => {
   try {
+    console.log('Fetching leaderboard...');
     const topPlayers = await Game.aggregate([
-      { $unwind: '$players' },
-      { $match: { 'players.isAlive': false, 'winner': { $exists: true } } },
-      { $group: { _id: '$players.name', wins: { $sum: 1 } } },
+      // First, filter games that have a winner
+      { $match: { 'winner': { $exists: true, $ne: null } } },
+      // Group by winner's name and count wins
+      { 
+        $group: { 
+          _id: '$winner.name', 
+          wins: { $sum: 1 },
+          // Optionally include the winner's ID if available
+          playerId: { $first: '$winner.id' }
+        } 
+      },
+      // Sort by number of wins in descending order
       { $sort: { wins: -1 } },
-      { $limit: 10 }
+      // Limit to top 10
+      { $limit: 10 },
+      // Project to clean up the output
+      {
+        $project: {
+          name: '$_id',
+          wins: 1,
+          playerId: 1,
+          _id: 0
+        }
+      }
     ]);
+    
+    console.log('Leaderboard results:', topPlayers);
     res.json(topPlayers);
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    console.error('Error in /api/leaderboard:', e);
+    res.status(500).json({ 
+      error: 'Failed to fetch leaderboard',
+      message: e.message,
+      stack: process.env.NODE_ENV === 'development' ? e.stack : undefined
+    });
   }
 });
 
-// Socket.IO Handlers
+app.get('/api/questions', async (req, res) => {
+  try {
+    const questions = await Question.find().sort({ createdAt: -1 });
+    res.json(questions);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch questions' });
+  }
+});
+
+app.post('/api/questions', async (req, res) => {
+  try {
+    const newQuestion = new Question(req.body);
+    await newQuestion.save();
+    res.status(201).json(newQuestion);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to create question' });
+  }
+});
+
+app.put('/api/questions/:id', async (req, res) => {
+  try {
+    const updatedQuestion = await Question.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(updatedQuestion);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update question' });
+  }
+});
+
+app.delete('/api/questions/:id', async (req, res) => {
+  try {
+    await Question.findByIdAndDelete(req.params.id);
+    res.status(204).send();
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete question' });
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
@@ -124,7 +177,7 @@ io.on('connection', (socket) => {
 
   socket.on('host:startRound', async (payload, cb) => {
     try {
-      const result = await gm.startRound(payload);
+      const result = await gm.startRound(payload, socket.id);
       cb?.({ ok: true, ...result });
     } catch (e) {
       console.error('Error in host:startRound:', e);
@@ -134,7 +187,7 @@ io.on('connection', (socket) => {
 
   socket.on('host:nextRound', async (payload, cb) => {
     try {
-      const result = await gm.nextRound(payload);
+      const result = await gm.nextRound(payload, socket.id);
       cb?.({ ok: true, ...result });
     } catch (e) {
       console.error('Error in host:nextRound:', e);
@@ -196,7 +249,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start Server Function
 async function startServer() {
   try {
     await connectDB();

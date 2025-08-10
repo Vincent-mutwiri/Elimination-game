@@ -2,7 +2,7 @@ import { io } from 'socket.io-client';
 
 // Get server URL from environment or use default
 const isDevelopment = import.meta.env.DEV;
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ||
   (isDevelopment ? 'http://localhost:4000' : 'https://your-server-url.com');
 
 console.log(`Connecting to WebSocket server at: ${SERVER_URL}`);
@@ -16,27 +16,27 @@ export const socket = io(SERVER_URL, {
   reconnectionDelay: 1000,
   reconnectionDelayMax: 10000,
   timeout: 30000,
-  
+
   // Transport settings - try WebSocket first, then fall back to polling
   transports: ['websocket', 'polling'],
   upgrade: true,
   forceNew: false,
-  
+
   // WebSocket specific settings
   withCredentials: true,
-  
+
   // Disable debug in production
   debug: import.meta.env.DEV,
-  
+
   // Disable per-message deflate
   perMessageDeflate: false,
-  
+
   // Don't close the connection when the page is hidden
   closeOnBeforeunload: false,
-  
+
   // Timeout for the connection to be established
   connectTimeout: 30000,
-  
+
   // Add a path if your server uses a specific path for Socket.IO
   path: '/socket.io/'
 });
@@ -62,7 +62,7 @@ socket.on('disconnect', (reason) => {
 });
 
 socket.on('connect_error', (error) => {
-  console.error('🔴 Connection error:', error.message);
+  console.error(' Connection error:', error.message);
   // Attempt to reconnect after a delay
   setTimeout(() => {
     socket.connect();
@@ -70,7 +70,7 @@ socket.on('connect_error', (error) => {
 });
 
 socket.on('reconnect_attempt', (attempt) => {
-  console.log(`🔄 Reconnection attempt ${attempt}`);});
+  console.log(` Reconnection attempt ${attempt}`);});
 
 socket.on('reconnect', (attempt) => {
   console.log(`✅ Successfully reconnected after ${attempt} attempts`);

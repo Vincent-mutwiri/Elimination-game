@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { socket } from '../lib/socket.js'
+import { useSounds } from '../hooks/useSounds.js'
 
 export default function Player() {
   const [code, setCode] = useState('')
@@ -13,6 +14,7 @@ export default function Player() {
   const [playerId, setPlayerId] = useState(null)
   const [emotes, setEmotes] = useState([])
   const [player, setPlayer] = useState(null)
+  const playSound = useSounds()
 
   useEffect(() => {
     socket.on('game:state', payload => {
@@ -27,16 +29,21 @@ export default function Player() {
       setRound(payload)
       setLocked(false)
       setChoice(null)
+      playSound('countdown')
     })
     socket.on('round:result', payload => {
-      if (payload.winner) {
-        // If this player is the winner, congrats; otherwise spectator screen.
-        const alive = payload.survivors.map(s => s.id)
-        if (!alive.includes(playerId)) setEliminated(true)
+      const alive = payload.survivors.map(s => s.id)
+      const wasCorrect = alive.includes(playerId)
+      
+      if (wasCorrect) {
+        playSound('correct')
       } else {
-        // Check if eliminated
-        const alive = payload.survivors.map(s => s.id)
-        if (!alive.includes(playerId)) setEliminated(true)
+        playSound('incorrect')
+        setEliminated(true)
+      }
+      
+      if (payload.winner && !alive.includes(playerId)) {
+        setEliminated(true)
       }
     })
     socket.on('game:emote', payload => {

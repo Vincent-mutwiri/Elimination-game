@@ -1,33 +1,36 @@
 import React, { useEffect, useState } from 'react';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+import { fetchApi } from '../lib/api';
 
 export default function Leaderboard() {
-  const [players, setPlayers] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch(`${SERVER_URL}/api/leaderboard`)
-      .then(res => res.json())
+    fetchApi('/api/leaderboard')
       .then(data => {
-        setPlayers(data);
-        setLoading(false);
+        setLeaderboard(data);
       })
       .catch(err => {
-        console.error('Failed to fetch leaderboard', err);
+        setError(err.message);
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, []);
 
   if (loading) return <div className="muted">Loading leaderboard...</div>;
+  if (error) return <div className="card danger"><strong>Error:</strong> {error}</div>;
 
   return (
     <section className="card">
       <h2>Leaderboard</h2>
-      <p>Top 10 players by wins</p>
-      <ol>
-        {players.map(p => (
-          <li key={p._id}>{p._id} - {p.wins} wins</li>
+      <ol className="list">
+        {leaderboard.map((player, index) => (
+          <li key={player._id} className="list-item">
+            <span>{index + 1}. {player._id}</span>
+            <span>{player.wins} wins</span>
+          </li>
         ))}
       </ol>
     </section>
