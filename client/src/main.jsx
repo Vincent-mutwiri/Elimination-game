@@ -9,20 +9,19 @@ import Admin from './pages/Admin.jsx';
 import GameDetails from './pages/GameDetails.jsx';
 import Leaderboard from './pages/Leaderboard.jsx';
 import './styles.css';
-import { ToastContainer } from 'react-toastify';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
-      <ToastContainer position="bottom-right" />
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="host" element={<Host />} />
-        <Route path="play" element={<Player />} />
-        <Route path="admin" element={<Admin />} />
-        <Route path="admin/:code" element={<GameDetails />} />
-        <Route path="leaderboard" element={<Leaderboard />} />
+        <Route path="/" element={<App />}>
+          <Route index element={<Home />} />
+          <Route path="host" element={<Host />} />
+          <Route path="play" element={<Player />} />
+          <Route path="admin" element={<Admin />} />
+          <Route path="admin/:code" element={<GameDetails />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

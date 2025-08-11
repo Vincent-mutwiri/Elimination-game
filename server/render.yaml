@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: squid-game-backend
+    name: elimination-game-server
     env: node
-    buildCommand: pnpm install
-    startCommand: pnpm start
+    buildCommand: "npm install"
+    startCommand: "node src/server.js"
     envVars:
       - key: NODE_ENV
         value: production
@@ -13,5 +13,5 @@ services:
         fromDatabase:
           name: mongodb
           property: connectionString
-      - key: CORS_ORIGIN
-        value: https://elimination-game-pi.vercel.app,https://elimination-game-pi.vercel.app/
+      - key: CLIENT_URL
+        value: https://your-client-app-url.vercel.app
